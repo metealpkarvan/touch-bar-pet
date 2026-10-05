@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.0 · 2026-10-05
+
+- Five freely selectable original environments with day/sunset/night and clear/rain/snow settings, shared by the habitat and Touch Bar.
+- A dedicated Paw World panel, owned decorations with explicit game-coin purchases and free re-equipping.
+- Three ordered permanent adventures, seven earned badges, lifetime statistics and once-only chapter rewards.
+- Fetch Dash: a 30-second aim-and-return challenge using the actual moving pet, gold target zones, completion-only scoring and a saved personal best.
+- Challenge pause and persistence retry retain movement, timing and already-completed returns without duplicate rewards.
+- Automatic version-1 to version-2 save migration preserves existing pet progress; new counters start at zero. Older apps cannot read the new archive format.
+- Expanded core/AppKit migration, purchase, chapter, challenge and retry verification, plus actual five-world animated previews.
+
 ## 1.1.0 · 2026-10-05
 
 - A living, shared playground: autonomous walks, gradual touch following, running, turning, blinking and articulated paws/tail.

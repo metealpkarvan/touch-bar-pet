@@ -36,12 +36,12 @@ jobs:
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v7
-      - run: bash scripts/package.sh 1.1.0
+      - run: bash scripts/package.sh 1.2.0
       - uses: actions/upload-artifact@v7
         with:
           name: TouchBarPet-universal
           path: |
-            dist/TouchBarPet-v1.1.0-universal.zip
+            dist/TouchBarPet-v1.2.0-universal.zip
             dist/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14

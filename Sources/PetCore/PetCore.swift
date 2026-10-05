@@ -39,7 +39,7 @@ public struct JournalEntry: Codable, Equatable {
     public init(date: Date, event: String, amount: Int = 0) { self.date = date; self.event = event; self.amount = amount }
 }
 public struct PetArchive: Codable, Equatable {
-    public var version = 1
+    public var version = 2
     public var id = UUID()
     public var adopted = false
     public var name = "Misket"
@@ -58,6 +58,7 @@ public struct PetArchive: Codable, Equatable {
     public var gameReceipts: [UUID] = []
     public var daily: Daily
     public var journal: [JournalEntry] = []
+    public var playground: PlaygroundProgress? = PlaygroundProgress()
     public init(now: Date = Date()) { createdAt = now; updatedAt = now; daily = Daily(key: Self.dayKey(now)) }
     public var level: Int { min(50, 1 + xp / 75) }
     public var levelProgress: Double { level == 50 ? 1 : Double(xp % 75) / 75 }
@@ -107,6 +108,7 @@ public struct PetArchive: Codable, Equatable {
         case .rest: break
         }
         if action == .meal || action == .snack { daily.meals = min(1000, daily.meals + 1) }
+        if action == .meal || action == .snack { var p=gameProgress; p.meals=min(1_000_000,p.meals+1); gameProgress=p }
         if action == .wash { daily.washes = min(1000, daily.washes + 1) }
         let gain = zip(needs.values, before.values).reduce(0.0) { $0 + max(0, $1.0 - $1.1) }
         let elapsed = careRewards[action.rawValue].map { now.timeIntervalSince($0) } ?? .infinity
@@ -134,11 +136,14 @@ public struct PetArchive: Codable, Equatable {
         let reward = 6 + min(60, round.score)
         coins = min(1_000_000, coins + reward); needs.joy = min(100, needs.joy + 18)
         needs.energy = max(20, needs.energy - 8); daily.games = min(1000, daily.games + 1)
+        var p=gameProgress; p.rounds=min(1_000_000,p.rounds+1); gameProgress=p
         note("game." + round.game.rawValue, at: now, amount: round.score); return true
     }
     public func validate() throws {
         func require(_ c: Bool, _ s: String) throws { if !c { throw PetError.invalid(s) } }
-        try require(version == 1, "Unsupported save version")
+        try require(version == 2, "Unsupported save version")
+        guard let playground=playground else { throw PetError.invalid("Missing playground progress") }
+        try playground.validate()
         try require(!name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && name.count <= 24 && !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }), "Invalid pet name")
         try require(needs.values.allSatisfy { $0.isFinite && (0...100).contains($0) }, "Invalid needs")
         try require((0...1_000_000).contains(xp) && (0...1_000_000).contains(coins), "Invalid progress")
@@ -149,7 +154,7 @@ public struct PetArchive: Codable, Equatable {
         let format = DateFormatter(); format.locale = Locale(identifier: "en_US_POSIX"); format.calendar = Calendar(identifier: .gregorian); format.timeZone = TimeZone(secondsFromGMT: 0); format.dateFormat = "yyyy-MM-dd"; format.isLenient = false
         try require(daily.key.count == 10 && format.date(from: daily.key).map { Self.dayKey($0, zone: TimeZone(secondsFromGMT: 0)!) == daily.key } == true, "Invalid daily date")
         try require([daily.meals, daily.washes, daily.games].allSatisfy { (0...1000).contains($0) }, "Invalid daily progress")
-        let events = Set(["adopt", "meal", "wash", "cuddle", "sleep", "wake", "snack", "daily"] + MiniGame.allCases.map { "game." + $0.rawValue })
+        let events = Set(["adopt", "meal", "wash", "cuddle", "sleep", "wake", "snack", "daily", "adventure", "game.fetch"] + MiniGame.allCases.map { "game." + $0.rawValue })
         try require(journal.count <= 40 && journal.allSatisfy { events.contains($0.event) && (0...999).contains($0.amount) }, "Invalid journal")
         let dates = [createdAt, updatedAt] + Array(careRewards.values) + journal.map { $0.date }
         try require(dates.allSatisfy { $0.timeIntervalSince1970.isFinite && (946_684_800...4_102_444_800).contains($0.timeIntervalSince1970) }, "Invalid timestamp")
@@ -160,7 +165,12 @@ public struct PetArchive: Codable, Equatable {
     public static func decode(_ data: Data) throws -> PetArchive {
         guard data.count <= 1_048_576 else { throw PetError.invalid("Save larger than 1 MB") }
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
-        let archive = try decoder.decode(PetArchive.self, from: data); try archive.validate(); return archive
+        var archive = try decoder.decode(PetArchive.self, from: data)
+        if archive.version == 1 {
+            guard archive.playground == nil else { throw PetError.invalid("Unexpected playground data in legacy save") }
+            archive.version=2; archive.playground=PlaygroundProgress()
+        }
+        try archive.validate(); return archive
     }
 }
 

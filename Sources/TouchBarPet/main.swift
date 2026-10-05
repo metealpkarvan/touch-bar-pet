@@ -26,9 +26,9 @@ final class PetDelegate:NSObject,NSApplicationDelegate {
         let edit=NSMenuItem(); menu.addItem(edit); let editMenu=NSMenu(title:"Düzen / Edit"); edit.submenu=editMenu
         for (title,action,key) in [("Geri al / Undo",Selector(("undo:")),"z"),("Kes / Cut",#selector(NSText.cut(_:)),"x"),("Kopyala / Copy",#selector(NSText.copy(_:)),"c"),("Yapıştır / Paste",#selector(NSText.paste(_:)),"v"),("Tümünü seç / Select All",#selector(NSText.selectAll(_:)),"a")] { editMenu.addItem(NSMenuItem(title:title,action:action,keyEquivalent:key)) }
         let save=NSMenuItem(); menu.addItem(save); let saveMenu=NSMenu(title:"Dost / Pet"); save.submenu=saveMenu
-        for (title,action,key) in [("JSON yedekle / Export JSON",#selector(PetController.exportAction),"s"),("Yedek yükle / Restore JSON",#selector(PetController.importAction),"o")] { let i=NSMenuItem(title:title,action:action,keyEquivalent:key); i.target=desk; saveMenu.addItem(i) }
+        for (title,action,key) in [("Pati Dünyası / Paw World",#selector(PetController.worldAction),"d"),("JSON yedekle / Export JSON",#selector(PetController.exportAction),"s"),("Yedek yükle / Restore JSON",#selector(PetController.importAction),"o")] { let i=NSMenuItem(title:title,action:action,keyEquivalent:key); i.target=desk; saveMenu.addItem(i) }
     }
-    @objc func aboutAction() { NSApp.orderFrontStandardAboutPanel(options:[.applicationName:"Pati Cepte · Touch Bar Pet",.applicationVersion:"1.1.0",.credits:NSAttributedString(string:"A little friend, a little play.\nMete Alp Karvan · MIT · 2026")]) }
+    @objc func aboutAction() { NSApp.orderFrontStandardAboutPanel(options:[.applicationName:"Pati Cepte · Touch Bar Pet",.applicationVersion:"1.2.0",.credits:NSAttributedString(string:"A little friend, a little play.\nMete Alp Karvan · MIT · 2026")]) }
     @objc func sourceAction() { NSWorkspace.shared.open(URL(string:"https://github.com/metealpkarvan/touch-bar-pet")!) }
 }
 func png(_ view:NSView,_ url:URL)throws {
@@ -49,7 +49,7 @@ func smoke(_ screenshots:URL?)throws {
           let popover=bar.item(forIdentifier:.petMenu) as? NSPopoverTouchBarItem,
           let physical=(bar.item(forIdentifier:.petRail) as? NSCustomTouchBarItem)?.view as? PetRailView,
           let action=(bar.item(forIdentifier:.petAction) as? NSCustomTouchBarItem)?.view as? NSButton else { throw PetError.invalid("Touch Bar items missing") }
-    try check(popover.popoverTouchBar.defaultItemIdentifiers.count==7,"Physical Touch Bar popover exposes four care actions and three games")
+    try check(popover.popoverTouchBar.defaultItemIdentifiers.count==8,"Physical Touch Bar popover exposes four care actions and four games")
     func advanceDesk(_ seconds:Double) { for _ in 0..<Int(seconds/0.05) { desk.step(0.05) } }
     let beforeMeal=desk.archive
     action.performClick(nil); try check(desk.archive==beforeMeal && desk.world.object == .meal,"Touch Bar feed places a bowl before changing persistent needs")
@@ -105,6 +105,7 @@ func smoke(_ screenshots:URL?)throws {
     try check(reopened.archive.xp==desk.archive.xp && reopened.archive.coins==desk.archive.coins && reopened.archive.daily==desk.archive.daily,"Reopening keeps levels, coins and daily progress")
     try check(reopened.archive.species==desk.archive.species && reopened.archive.fur==desk.archive.fur && reopened.archive.accessory==desk.archive.accessory,"Reopening keeps species, fur and earned accessory")
     desk.languageButton.performClick(nil); try check(desk.archive.language == .tr,"Language preference returns to Turkish")
+    checks += try worldSmoke(desk,physical,bar,date,temp,screenshots)
     if let folder=screenshots {
         try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
         try png(desk.window!.contentView!,folder.appendingPathComponent("desktop-tr.png"))

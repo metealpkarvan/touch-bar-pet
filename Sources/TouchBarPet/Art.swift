@@ -106,16 +106,20 @@ final class HabitatView: NSView {
     override func draw(_ dirtyRect:NSRect) {
         fill(bounds,Palette.paper,radius:16)
         let sky = NSRect(x:8,y:8,width:bounds.width-16,height:bounds.height-16)
-        fill(sky,NSColor(calibratedRed:0.86,green:0.91,blue:0.83,alpha:1),radius:12)
-        ellipse(NSRect(x:bounds.width-83,y:bounds.height-68,width:36,height:36),Palette.gold.withAlphaComponent(0.7))
-        for x in stride(from:CGFloat(10),to:bounds.width,by:26) { line(NSPoint(x:x,y:8),NSPoint(x:x+32,y:bounds.height-8),NSColor.white.withAlphaComponent(0.13)) }
-        fill(NSRect(x:8,y:8,width:bounds.width-16,height:45),Palette.green.withAlphaComponent(0.10),radius:12)
+        drawScenery(sky,progress:archive.gameProgress,clock:clock,motion:motion,compact:false)
         let x = 42 + CGFloat(world.position) * (bounds.width - 84)
         drawLivingPet(NSRect(x:x-50,y:30,width:100,height:80),archive:archive,world:world,motion:motion)
         let objectX = world.carrying ? x + CGFloat(world.facing) * 42 : 42 + CGFloat(world.objectPosition) * (bounds.width - 84)
         drawPlayObject(NSPoint(x:objectX,y:world.carrying ? 73 : 36 + (motion ? CGFloat(world.objectLift) * 65 : 0)),size:17,world:world,motion:motion)
-        if archive.adopted { drawText(activityName(world,archive.language),NSRect(x:18,y:bounds.height-35,width:bounds.width-36,height:20),size:12,color:Palette.green,weight:.medium) }
-        for (x,y) in [(bounds.width-42,CGFloat(33)),(CGFloat(94),CGFloat(25)),(bounds.width-99,CGFloat(21))] { star(NSPoint(x:x,y:y),radius:3,color:Palette.gold) }
+        if archive.adopted {
+            fill(NSRect(x:16,y:bounds.height-38,width:bounds.width-32,height:24),Palette.paper.withAlphaComponent(0.85),radius:8)
+            drawText(activityName(world,archive.language),NSRect(x:23,y:bounds.height-35,width:bounds.width-46,height:20),size:12,color:Palette.ink,weight:.medium)
+            if world.activity == .idle {
+                let thought=archive.needs.food<40 ? t(archive.language,"Acıktım…","I'm hungry…") : archive.needs.energy<40 ? t(archive.language,"Biraz dinlensem?","A little rest?") : t(archive.language,"Birlikte oynayalım!","Let's play together!")
+                fill(NSRect(x:max(18,min(bounds.width-151,x-67)),y:122,width:133,height:25),Palette.paper.withAlphaComponent(0.92),radius:10)
+                drawText(thought,NSRect(x:max(20,min(bounds.width-149,x-65)),y:126,width:129,height:18),size:11,color:Palette.ink,alignment:.center)
+            }
+        }
     }
 }
 
@@ -137,6 +141,7 @@ enum RailInput { case tap(Double), move(Double), release(Double), pause, pad(Int
 final class PetRailView: NSView {
     var archive = PetArchive() { didSet { needsDisplay = true } }
     var session: GameSession? { didSet { needsDisplay = true } }
+    var fetchRound: FetchRound? { didSet { needsDisplay = true } }
     var world = CompanionWorld() { didSet { needsDisplay = true } }
     var tool: PlaygroundTool = .follow
     var clock: Double = 0 { didSet { needsDisplay = true } }
@@ -176,7 +181,13 @@ final class PetRailView: NSView {
     override func draw(_ dirtyRect:NSRect) {
         fill(bounds,Palette.rail,radius:8)
         guard let game=session else {
+            drawScenery(bounds,progress:archive.gameProgress,clock:clock,motion:motion,compact:true)
             NSGraphicsContext.saveGraphicsState(); NSBezierPath(rect:bounds).addClip()
+            if let round=fetchRound {
+                let targetX=arena.minX+CGFloat(round.target)*arena.width
+                fill(NSRect(x:targetX-arena.width*0.10,y:3,width:arena.width*0.20,height:bounds.height-6),Palette.gold.withAlphaComponent(0.28),radius:5)
+                star(NSPoint(x:targetX,y:bounds.height-8),radius:5,color:Palette.gold)
+            }
             line(NSPoint(x:arena.minX,y:3),NSPoint(x:arena.maxX,y:3),Palette.green.withAlphaComponent(0.55),width:1)
             let h = min(bounds.height-3,40), w = h * 1.25
             let x = arena.minX + CGFloat(world.position) * arena.width
@@ -184,6 +195,11 @@ final class PetRailView: NSView {
             let objectX = world.carrying ? x + CGFloat(world.facing) * w * 0.43 : arena.minX + CGFloat(world.objectPosition) * arena.width
             drawPlayObject(NSPoint(x:objectX,y:world.carrying ? h * 0.46 : 6 + (motion ? CGFloat(world.objectLift) * (h * 0.52) : 0)),size:min(10,h * 0.35),world:world,motion:motion)
             if !archive.adopted { drawText(t(archive.language,"Önce Dost seç","Choose a pet first"),NSRect(x:arena.minX,y:arena.midY-7,width:arena.width,height:18),size:11,color:Palette.paper,alignment:.center) }
+            if let round=fetchRound, round.phase != .running {
+                fill(arena,Palette.rail.withAlphaComponent(0.80),radius:6)
+                let title=round.phase == .finished ? t(archive.language,"Tur bitti · \(round.score) puan","Round over · \(round.score) points") : round.phase == .paused ? t(archive.language,"Duraklatıldı · dokun","Paused · tap") : t(archive.language,"Getir Götür · dokun","Fetch Dash · tap")
+                drawText(title,NSRect(x:arena.minX,y:arena.midY-8,width:arena.width,height:20),size:11,color:Palette.paper,weight:.medium,alignment:.center)
+            }
             NSGraphicsContext.restoreGraphicsState()
             return
         }

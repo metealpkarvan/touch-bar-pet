@@ -5,7 +5,7 @@ public enum PlayObject: String { case ball, bone, meal, treat }
 public enum CompanionActivity: String { case idle, walking, running, chasing, returning, eating, cuddling, washing, celebrating, sleeping }
 public enum CompanionEvent: Equatable { case meal, treat, cuddle, wash, fetched(PlayObject) }
 
-/// A transient, deterministic playground. Existing version-1 pet saves remain unchanged.
+/// A transient, deterministic playground; only completed interactions enter the archive.
 /// Care is emitted only after eating/interaction; fetching only after the toy comes back.
 public struct CompanionWorld {
     public private(set) var position: Double = 0.5
@@ -48,12 +48,12 @@ public struct CompanionWorld {
         enter(abs(target - position) > 0.28 ? .running : .walking)
         return true
     }
-    @discardableResult public mutating func throwToy(_ kind: PlayObject, toward x: Double) -> Bool {
+    @discardableResult public mutating func throwToy(_ kind: PlayObject, toward x: Double, allowShort: Bool = false) -> Bool {
         guard [.ball, .bone].contains(kind), x.isFinite, activity != .sleeping, !careInProgress else { return false }
         cancel(); object = kind; ownerPosition = position; flightStart = position
         target = bounded(x); objectPosition = position
         // A tap beside the pet still produces a useful, bounded throw.
-        if abs(target - position) < 0.12 { target = position < 0.5 ? 0.82 : 0.18 }
+        if !allowShort && abs(target - position) < 0.12 { target = position < 0.5 ? 0.82 : 0.18 }
         flightDuration = 0.55 + abs(target - position) * 0.4; flightTime = 0
         enter(.chasing); return true
     }

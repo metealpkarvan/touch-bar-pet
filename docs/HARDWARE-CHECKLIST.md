@@ -13,6 +13,10 @@ Record the actual Mac model, CPU family, macOS version, release ZIP checksum and
 - [ ] Cancel a pending meal/fetch using Escape or Rest; confirm no meal/reward was saved.
 - [ ] Catch stars, time rally input and repeat memory pads on physical hardware. Check debounce and small target readability.
 - [ ] Switch apps/minimize while a round runs; ensure it pauses and explicitly resumes without a timer jump.
+- [ ] Cycle all five worlds from the Touch Bar; choose lighting/weather/decor in Paw World. Confirm the matching scenes and readable targets.
+- [ ] Run Fetch Dash with ball and bone, replace an unfinished throw, pause/resume and hit the deadline. Verify completion-only +3/+5 scoring.
+- [ ] Earn an adventure reward, buy/equip decor, quit/reopen and confirm world, wallet, ownership, chapter and badge continuity.
+- [ ] With an exported version-1 fixture, close the old app, migrate in 1.2 and verify old progress plus raw previous revision.
 - [ ] Rest, quit, wait and reopen. Confirm bounded catch-up and retained progress.
 - [ ] Export JSON, restore into a temporary macOS user profile and reopen. Avoid destructive tests on a real save.
 - [ ] With a backed-up temporary test save, corrupt the primary; explicitly recover and verify raw recovery copy.

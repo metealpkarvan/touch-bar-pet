@@ -178,7 +178,7 @@ do {
     var invalid=try pet(); invalid.needs.food = .nan
     try rejects("Nonfinite needs rejected") { try invalid.validate() }
     invalid=try pet(); invalid.coins = -1; try rejects("Negative currency rejected") { try invalid.validate() }
-    invalid=try pet(); invalid.version=2; try rejects("Unknown save version protected") { try invalid.validate() }
+    invalid=try pet(); invalid.version=99; try rejects("Unknown save version protected") { try invalid.validate() }
     invalid=try pet(); invalid.best["unknown"]=99; try rejects("Unknown game score rejected") { try invalid.validate() }
     invalid=try pet(); invalid.daily.key="2026-99-88"; try rejects("Invalid calendar key rejected") { try invalid.validate() }
     invalid=try pet(); invalid.createdAt=Date(timeIntervalSince1970:.infinity); try rejects("Invalid timestamps rejected") { try invalid.validate() }
@@ -218,5 +218,6 @@ do {
     try rejects("Symbolic-link import refused") { _=try store.importFile(alias) }
     let denied=temp.appendingPathComponent("regular-file"); try Data("file".utf8).write(to:denied)
     try rejects("Unwritable save location reports failure") { try PetStore(directory:denied).save(first) }
+    try worldChecks()
     print("\(checks) core checks passed.")
 } catch { fputs("\(error)\n",stderr); exit(1) }
