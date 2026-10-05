@@ -1,6 +1,6 @@
 # Roadmap
 
-Version 1 includes one persistent pet, free care, a transparent coin/XP progression, daily trio, three shared strip games, local backup recovery and Turkish/English controls.
+Version 1.1 includes one persistent pet, gradual touch following, automatic walks, ball/bone fetch, food placement and timed eating, free care, a transparent coin/XP progression, daily trio, three shared strip games, local backup recovery and Turkish/English controls.
 
 Next work should start with the physical Touch Bar checklist and a measured keyboard/VoiceOver pass. Keep real results separate from native callback acceptance.
 

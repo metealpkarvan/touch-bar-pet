@@ -1,10 +1,29 @@
 # Pati Cepte · Touch Bar evcil hayvan oyunu
 
-**Küçük bir dost, biraz oyun.** MacBook Pro Touch Bar’ında kedi, köpek veya tavşan sahiplen; besle, temizle, sev ve birlikte üç mini oyun oyna.
+**Touch Bar’ında yaşayan küçük bir dost.** Kedi, köpek veya tavşanın yürüsün, koşsun, parmağını takip etsin; attığın topu/kemiği getirip bıraktığın mamayı yesin. Üç kısa mini oyun ve kayıtlı ilerleme de yanında.
 
 [Mac uygulamasını indir](https://github.com/metealpkarvan/touch-bar-pet/releases/latest) · [English](README.md)
 
 ![Çalışan uygulamanın Türkçe arayüzü](docs/images/desktop-tr.png)
+
+## Canlı Touch Bar oyun alanı · yeni 1.1.0
+
+![Gerçek AppKit şeridinden üretilen yürüyüş, top/kemik getirme ve mama animasyonu](docs/images/touchbar-live.gif)
+
+| Araç | Dokunduğunda olan şey |
+| --- | --- |
+| **Takip** | Dokunduğun yere yürür; uzaksa koşar. Parmağını sürüklediğinde yön değiştirip takip eder. Dostunun üzerine dokununca sevilir. |
+| **Top** | Top dokunduğun yere havada gider. Dostun koşup alır, ağzında başlangıç noktasına geri getirir ve sevinir. |
+| **Kemik** | Kemiği at, peşinden koşmasını ve geri getirmesini izle. Top ve kemik ücretsizdir. |
+| **Mama bırak** | Seçtiğin noktaya bir kap bırak. Dostun oraya yürür, başını eğip yer; tokluk ancak yemek bitince kaydedilir. |
+
+Touch Bar’da **Takip / Top / Kemik / Mama bırak** menüsünden aracı seç; menü kapandıktan sonra şeride dokun. Pencere içindeki şerit ve büyük bahçe aynı hareketleri paylaşır. Boşta biraz bekleyince kendi kendine gezintiye çıkar; yönüne göre döner, patileri ve kuyruğu hareket eder, göz kırpar. **Mama** bakım düğmesi kabı otomatik olarak başka bir noktaya koyar. **Temizle** ve **Sev** de kısa bir etkileşimle tamamlanır.
+
+Serbest alanda **1–4** araç seçer, Takip modunda **← →** hedefi taşır, **boşluk** mevcut noktaya dokunur. **Escape / P** devam eden serbest etkileşimi iptal eder. Dinlenen dostuna dokunarak veya **Uyandır** ile uyandırabilirsin. Uygulama arka plandayken veya küçültüldüğünde canlı alan ilerlemez.
+
+Getirme tamamlanınca neşe/bakım ödülü uygulanır; aynı bakımın 60 saniyelik XP sınırı korunur. Serbest getirme, günlük hedefteki 24 saniyelik tur yerine geçmez. İptal edilen/yeni oyuncakla değiştirilen getirme ve yarım kalan yemek ödül vermez. Yazma hatasında **Kaydetmeyi yeniden dene** son tamamlanan etkileşimi bir kez kaydeder.
+
+Animasyon gerçek uygulama çizimlerinden, kurmaca kayıtlarla üretilmiştir; fiziksel Touch Bar çekimi değildir. Hareketi Azalt ayarı süs hareketlerini ve kendiliğinden gezintiyi kapatır; açıkça istediğin hedefe gitme, getirme ve yeme çalışmaya devam eder.
 
 ## Nasıl oynanır?
 
@@ -24,7 +43,7 @@ Her tur **24 etkin saniye** sürer. **P** duraklatır/devam ettirir; **Escape** 
 
 ## İndir ve kur
 
-1. [Releases](https://github.com/metealpkarvan/touch-bar-pet/releases/latest) sayfasından `TouchBarPet-v1.0.0-universal.zip` indir.
+1. [Releases](https://github.com/metealpkarvan/touch-bar-pet/releases/latest) sayfasından `TouchBarPet-v1.1.0-universal.zip` indir.
 2. ZIP’i aç; **Pati Cepte.app** uygulamasını Uygulamalar klasörüne taşı ve çalıştır.
 3. Dostunu seç. Bakım, isim/renk değişikliği, günlük hediye ve tamamlanan oyun turu otomatik kaydedilir.
 
@@ -35,6 +54,8 @@ Touch Bar’da görünmesi için uygulama önde olmalı ve klavye ayarlarında *
 Paket bütünlüğü için ad-hoc imzalanmıştır; **Apple Developer ID imzası ve notarizasyonu yoktur**. İlk açılış engellenirse yalnız bu sürüme güvendiğinde ilk denemeden sonra Sistem Ayarları → Gizlilik ve Güvenlik → Yine de Aç yolunu kullanabilirsin. [Apple’ın resmi açıklaması](https://support.apple.com/102445). Gatekeeper’ı genel olarak kapatma. İstersen açık kaynak kodundan derle.
 
 ## Her açılışta aynı dost
+
+**1.0.0’dan güncelleme:** Eski uygulamayı kapatıp yeni `.app` dosyasını aç. Kayıt klasörü ve sürüm-1 JSON biçimi aynıdır; isim, tür, seviye, para, aksesuar ve puanlar korunur. Gezinti konumu, havadaki oyuncak ve bitmemiş yemek gibi anlık sahne durumları yeniden açılışta sıfırlanır; tamamlanan bakım/getirme kazançları kayıtlıdır.
 
 Kayıt: `~/Library/Application Support/TouchBarPet/pet.json`.
 
@@ -54,7 +75,7 @@ cd touch-bar-pet
 swift run TouchBarPet
 swift run PetRulesTests
 swift run TouchBarPet --smoke-test --screenshots output/verification
-bash scripts/package.sh 1.0.0
+bash scripts/package.sh 1.1.0
 ```
 
 Kayıt/kurtarma, ödül tekrarını engelleme, oyun ve saat kuralları otomatik kontrol edilir. AppKit kabul kontrolü gerçek düğmeleri ve Touch Bar geri çağrılarını geçici kurmaca kayıtlarla çalıştırır. Intel ve arm64 CI ayrı yapılır; Universal paketin dilimleri ayrıca doğrulanır.

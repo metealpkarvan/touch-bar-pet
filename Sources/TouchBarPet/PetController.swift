@@ -5,6 +5,7 @@ extension NSTouchBarItem.Identifier {
     static let petRail = NSTouchBarItem.Identifier("com.metealpkarvan.TouchBarPet.rail")
     static let petMenu = NSTouchBarItem.Identifier("com.metealpkarvan.TouchBarPet.menu")
     static let petAction = NSTouchBarItem.Identifier("com.metealpkarvan.TouchBarPet.action")
+    static let petToys = NSTouchBarItem.Identifier("com.metealpkarvan.TouchBarPet.toys")
 }
 final class PetWindow: NSWindow {
     weak var owner: PetController?
@@ -20,11 +21,13 @@ final class PetController: NSWindowController, NSWindowDelegate, NSTouchBarDeleg
     var recoveryAvailable = false
     var now: () -> Date
     var session: GameSession?
+    var world = CompanionWorld()
+    var selectedTool: PlaygroundTool = .follow
+    var pendingInteraction: CompanionEvent?
     var rewardSaved = false
     var timer: Timer?
     var observers: [NSObjectProtocol] = []
     var lastTick = ProcessInfo.processInfo.systemUptime
-    var lastPaint = 0.0
     var lastRefresh = 0.0
     var lastSaved = Date.distantPast
     var message = ""
@@ -40,6 +43,7 @@ final class PetController: NSWindowController, NSWindowDelegate, NSTouchBarDeleg
     let dailyTitle = label("",17,Palette.ink,.semibold)
     let dailyText = label("",13,Palette.muted)
     let gamesTitle = label("",20,Palette.ink,.semibold)
+    let roundsTitle = label("",11,Palette.muted,.medium)
     let instruction = label("",12,Palette.muted)
     let railTitle = label("",11,Palette.muted,.medium)
     let saveLabel = label("",10,Palette.muted)
@@ -47,6 +51,9 @@ final class PetController: NSWindowController, NSWindowDelegate, NSTouchBarDeleg
     let vitals = (0..<4).map { _ in VitalView(frame:.zero) }
     var careButtons: [Care:NSButton] = [:]
     var gameButtons: [MiniGame:NSButton] = [:]
+    var toolButtons: [PlaygroundTool:NSButton] = [:]
+    var barToolButtons: [PlaygroundTool:NSButton] = [:]
+    var barToys: NSPopoverTouchBarItem?
     var languageButton = NSButton()
     var identityButton = NSButton()
     var claimButton = NSButton()
@@ -106,12 +113,15 @@ final class PetController: NSWindowController, NSWindowDelegate, NSTouchBarDeleg
         place(dailyTitle,NSRect(x:400,y:550,width:412,height:27)); place(dailyText,NSRect(x:400,y:482,width:412,height:63))
         claimButton=button("",NSRect(x:396,y:443,width:260,height:32),#selector(claimAction))
         place(gamesTitle,NSRect(x:400,y:394,width:412,height:30))
-        for (i,game) in MiniGame.allCases.enumerated() { gameButtons[game]=button("",NSRect(x:396,y:349-CGFloat(i)*46,width:418,height:38),#selector(gameAction),i) }
+        for (i,tool) in PlaygroundTool.allCases.enumerated() { toolButtons[tool]=button("",NSRect(x:396+CGFloat(i)*105,y:349,width:103,height:38),#selector(toolAction),i) }
+        place(roundsTitle,NSRect(x:400,y:316,width:412,height:21))
+        for (i,game) in MiniGame.allCases.enumerated() { gameButtons[game]=button("",NSRect(x:396+CGFloat(i)*140,y:270,width:138,height:36),#selector(gameAction),i); gameButtons[game]?.font=NSFont.systemFont(ofSize:11,weight:.medium) }
         place(instruction,NSRect(x:400,y:188,width:412,height:60))
         playButton=button("",NSRect(x:396,y:141,width:200,height:32),#selector(playAction))
         homeButton=button("",NSRect(x:608,y:141,width:205,height:32),#selector(homeAction))
         place(railTitle,NSRect(x:29,y:122,width:780,height:17)); place(rail,rail.frame)
         rail.onInput = { [weak self] input in self?.input(input) }
+        habitat.onInput = { [weak self] input in self?.input(input) }
         place(saveLabel,NSRect(x:29,y:20,width:505,height:37))
         exportButton=button("",NSRect(x:552,y:25,width:120,height:31),#selector(exportAction))
         importButton=button("",NSRect(x:684,y:25,width:130,height:31),#selector(importAction))
@@ -126,12 +136,13 @@ final class PetController: NSWindowController, NSWindowDelegate, NSTouchBarDeleg
     }
     func refresh() {
         let l=language
-        subtitle.stringValue=t(l,"Touch Bar’ında küçük bir dost. Bakım yap, birlikte oyna, kaldığın yerden devam et.","A little friend in your Touch Bar. Care, play and pick up where you left off.")
+        world.sleep(archive.sleeping)
+        subtitle.stringValue=t(l,"Yürüyen, koşan, oyuncağını getiren küçük dostun. Dokun, mama bırak, birlikte oyna.","A little friend who walks, runs and fetches. Tap, place food and play together.")
         languageButton.title=t(l,"English","Türkçe")
         if protectedSave { banner.stringValue=t(l,"Ana kayıt korunuyor. ","Primary save is protected. ") + t(l,recoveryAvailable ? "Önceki sağlam kayıt kurtarılabilir." : "Geçerli bir JSON yedeği yükleyebilirsin.",recoveryAvailable ? "A previous valid save can be recovered." : "You can restore a valid JSON backup.") }
         else { banner.stringValue=errorMessage }
         recoverButton.isHidden = !recoveryAvailable || !protectedSave; recoverButton.title=t(l,"Kaydı kurtar","Recover save")
-        habitat.archive=archive; habitat.motion=motion; habitat.setAccessibilityLabel(t(l,"\(archive.name), \(archive.species.rawValue), ","\(archive.name), \(archive.species.rawValue), ") + t(l,archive.sleeping ? "dinleniyor" : "uyanik",archive.sleeping ? "resting" : "awake"))
+        habitat.archive=archive; habitat.world=world; habitat.motion=motion; habitat.setAccessibilityLabel(archive.name + ", " + activityName(world,l) + ". " + t(l,"Dokunarak etkileş.","Tap to interact."))
         petName.stringValue=archive.adopted ? archive.name : t(l,"Bir dost edin","Adopt a friend")
         identityButton.title=t(l,archive.adopted ? "Adı / rengi" : "Dost seç",archive.adopted ? "Name / fur" : "Choose pet")
         identityButton.isEnabled = !protectedSave
@@ -140,39 +151,49 @@ final class PetController: NSWindowController, NSWindowDelegate, NSTouchBarDeleg
         let titles=l == .tr ? ["Tokluk","Neşe","Enerji","Temizlik"] : ["Food","Joy","Energy","Clean"]
         for i in 0..<4 { vitals[i].title=titles[i]; vitals[i].value=archive.needs.values[i]; vitals[i].setAccessibilityLabel(titles[i]) }
         let cares:[Care:String]=[.meal:t(l,"Mama","Feed"),.wash:t(l,"Temizle","Wash"),.cuddle:t(l,"Sev","Cuddle"),.rest:t(l,archive.sleeping ? "Uyandır" : "Dinlendir",archive.sleeping ? "Wake" : "Rest"),.snack:t(l,"Ödül maması · 15","Treat · 15")]
-        for (care,b) in careButtons { b.title=cares[care]!; b.isEnabled=archive.adopted && !protectedSave && session == nil && (care != .snack || archive.coins >= 15) }
+        for (care,b) in careButtons { b.title=cares[care]!; b.isEnabled=archive.adopted && !protectedSave && session == nil && pendingInteraction == nil && (care == .rest || (!world.careInProgress && !archive.sleeping)) && (care != .snack || archive.coins >= 15) }
         costumeButton.title=t(l,"Aksesuarlar · Sv. \(archive.level)","Accessories · Lv. \(archive.level)"); costumeButton.isEnabled=archive.adopted && !protectedSave
         dailyTitle.stringValue=t(l,"Bugünün küçük üçlüsü · \(archive.daily.completed)/3","Today's little trio · \(archive.daily.completed)/3")
         let mark: (Bool)->String = { $0 ? "✓" : "○" }
         dailyText.stringValue="\(mark(archive.daily.meals > 0)) " + t(l,"Bir öğün mama\n","A meal\n") + "\(mark(archive.daily.washes > 0)) " + t(l,"Bir temizlik\n","A wash\n") + "\(mark(archive.daily.games > 0)) " + t(l,"Bir tamamlanmış oyun turu","A completed game round")
         claimButton.title=t(l,archive.daily.claimed ? "Bugünün hediyesi alındı" : "Hediyeyi al · +40 para / +20 XP",archive.daily.claimed ? "Today's gift collected" : "Collect gift · +40 coins / +20 XP")
         claimButton.isEnabled=archive.adopted && !protectedSave && archive.daily.completed==3 && !archive.daily.claimed
-        gamesTitle.stringValue=t(l,"Birlikte oyun zamanı","Play together")
-        for (game,b) in gameButtons { b.title=word(game,l) + " · " + t(l,"En iyi \(archive.best[game.rawValue] ?? 0)","Best \(archive.best[game.rawValue] ?? 0)"); b.isEnabled=archive.adopted && !protectedSave && !archive.sleeping }
+        gamesTitle.stringValue=t(l,"Canlı oyun alanı","Living playground")
+        roundsTitle.stringValue=t(l,"KISA TURLAR · 24 SANİYE · EN İYİ PUAN","SHORT ROUNDS · 24 SECONDS · BEST SCORE")
+        for (game,b) in gameButtons { b.title=word(game,l) + " · \(archive.best[game.rawValue] ?? 0)"; b.isEnabled=archive.adopted && !protectedSave && !archive.sleeping && !world.careInProgress && pendingInteraction == nil }
+        for (tool,b) in toolButtons { b.title=(selectedTool == tool ? "• " : "") + toolName(tool,l); b.isEnabled=archive.adopted && !protectedSave && !archive.sleeping && session == nil && !world.careInProgress && pendingInteraction == nil }
+        for (tool,b) in barToolButtons { b.title=(selectedTool == tool ? "• " : "") + toolName(tool,l); b.isEnabled=toolButtons[tool]?.isEnabled ?? false }
+        barToys?.collapsedRepresentationLabel=toolName(selectedTool,l)
         instruction.stringValue=gameInstruction()
         playButton.title=t(l,session?.phase == .running ? "Duraklat · P" : session?.phase == .paused ? "Devam et · boşluk" : "Başla · boşluk",session?.phase == .running ? "Pause · P" : session?.phase == .paused ? "Resume · space" : "Start · space")
         playButton.isEnabled=session != nil && session?.phase != .finished && !protectedSave
-        homeButton.title=t(l,"Yuvaya dön","Back home"); homeButton.isEnabled=session != nil
-        railTitle.stringValue=session.map { word($0.game,l) + " · \($0.secondsLeft)s · \($0.score) " + t(l,"puan","points") } ?? t(l,"TOUCH BAR ÖNİZLEMESİ · DOSTUNA DOKUN","TOUCH BAR PREVIEW · TAP YOUR FRIEND")
+        homeButton.title=pendingInteraction != nil ? t(l,"Kaydetmeyi yeniden dene","Retry saving") : t(l,"Yuvaya dön","Back home"); homeButton.isEnabled=session != nil || pendingInteraction != nil
+        railTitle.stringValue=session.map { word($0.game,l) + " · \($0.secondsLeft)s · \($0.score) " + t(l,"puan","points") } ?? (toolName(selectedTool,l).uppercased() + " · " + activityName(world,l) + t(l," · Dokun / sürükle"," · Tap / drag"))
         let format=DateFormatter(); format.dateStyle = .none; format.timeStyle = .short; format.locale=Locale(identifier:l == .tr ? "tr_TR" : "en_US")
         let saved=lastSaved == .distantPast ? t(l,"Yerel kayıt · her bakım ve tamamlanan turda otomatik","Local save · automatic after care and completed rounds") : t(l,"Kaydedildi · \(format.string(from:lastSaved))","Saved · \(format.string(from:lastSaved))")
         saveLabel.stringValue=errorMessage.isEmpty ? (message.isEmpty ? saved : message + "\n" + saved) : errorMessage
         saveLabel.textColor=errorMessage.isEmpty ? Palette.muted : Palette.coral
         exportButton.title=t(l,"JSON yedekle","Export JSON"); importButton.title=t(l,"Yedek yükle","Restore JSON")
         exportButton.isEnabled=archive.adopted
-        for view in [rail,touchRail].compactMap({$0}) { view.archive=archive; view.session=session; view.motion=motion }
+        for view in [rail,touchRail].compactMap({$0}) { view.archive=archive; view.session=session; view.world=world; view.tool=selectedTool; view.motion=motion; view.setAccessibilityLabel(archive.name + ". " + toolName(selectedTool,l) + ". " + activityName(world,l)); view.setAccessibilityValue("\(Int(world.position*100))%") }
         if let s=session { barAction?.title=s.phase == .running ? "Ⅱ \(s.secondsLeft)s" : s.phase == .finished ? "✓ \(s.score)" : "▶ \(s.secondsLeft)s" }
         else { barAction?.title=t(l,archive.sleeping ? "Uyandır" : "Mama",archive.sleeping ? "Wake" : "Feed") }
-        barAction?.isEnabled=archive.adopted && !protectedSave && session?.phase != .finished
+        barAction?.isEnabled=archive.adopted && !protectedSave && session?.phase != .finished && pendingInteraction == nil && !world.careInProgress
         for (key,b) in popButtons {
-            if let care=Care(rawValue:key) { b.title=cares[care]!; b.isEnabled=archive.adopted && !protectedSave && session == nil && (care != .snack || archive.coins>=15) }
-            else if let game=MiniGame(rawValue:String(key.dropFirst(5))) { b.title=word(game,l); b.isEnabled=archive.adopted && !protectedSave && !archive.sleeping }
+            if let care=Care(rawValue:key) { b.title=cares[care]!; b.isEnabled=careButtons[care]?.isEnabled ?? false }
+            else if let game=MiniGame(rawValue:String(key.dropFirst(5))) { b.title=word(game,l); b.isEnabled=gameButtons[game]?.isEnabled ?? false }
         }
     }
     func gameInstruction() -> String {
         guard archive.adopted else { return t(language,"Kedi, köpek veya tavşan seç. İlk dostunun adı, rengi ve tüm ilerleyişi bu Mac’te kalır.","Choose a cat, dog or rabbit. Your friend's name, fur and progress stay on this Mac.") }
         if archive.sleeping && session == nil { return t(language,"Dostun dinleniyor. Oynamak için Uyandır’a dokun. Dinlenirken enerji dolar.","Your friend is resting. Tap Wake to play. Rest gradually restores energy.") }
-        guard let s=session else { return t(language,"Her tur 24 saniye. Yıldızlara dokun, topu yeşil alanda yakala veya pati sırasını hatırla. Tab ile şeride geçebilirsin.","Each round lasts 24 seconds. Tap stars, catch the ball in green or remember the paw pattern. Tab can focus the strip.") }
+        guard let s=session else {
+            switch selectedTool {
+            case .follow: return t(language,"Bir yere dokun: dostun oraya yürüsün veya koşsun. Parmağını sürükle: takip etsin. Dostunun üstüne dokun: sev.","Tap a place: your friend walks or runs there. Drag: follow your finger. Tap your pet: cuddle.")
+            case .ball, .bone: return t(language,"Şeritte bir yere dokun: oyuncağı oraya at. Dostun koşup alır, attığın yere geri getirir. Sürükleyerek de atabilirsin.","Tap a place on the strip to throw a toy. Your friend runs, picks it up and brings it back to the launch point. Drag to throw too.")
+            case .food: return t(language,"Bir yere dokun: mama kabını bırak. Dostun yürüyüp yedikten sonra tokluk ve ilerleme kaydedilir.","Tap a place to put down a bowl. Your friend walks over and eats before food and progress are saved.")
+            }
+        }
         if s.phase == .finished { return rewardSaved ? t(language,"Tur tamamlandı ve ödül kaydedildi. Yeni oyun seçebilir veya yuvaya dönebilirsin.","Round complete and reward saved. Choose another game or return home.") : t(language,"Ödül henüz kaydedilemedi. Yuvaya dön düğmesi kaydetmeyi yeniden dener.","The reward could not be saved. Back home retries saving.") }
         switch s.game {
         case .stars: return t(language,"Yıldıza dokun veya sürükle. Klavyede ← → ile patini taşı, boşlukla yakala. +4 puan.","Tap a star or drag. Keyboard: move with ← → and catch with space. +4 points.")
@@ -195,9 +216,38 @@ final class PetController: NSWindowController, NSWindowDelegate, NSTouchBarDeleg
     }
     @objc func careAction(_ sender:NSButton) { performCare([Care.meal,.wash,.cuddle,.rest,.snack][min(4,max(0,sender.tag))]) }
     func performCare(_ action:Care) {
+        guard archive.adopted, !protectedSave, pendingInteraction == nil else { return }
         guard session == nil else { pause(); message=t(language,"Önce yuvaya dönerek bakım yapabilirsin.","Return home to care for your friend."); refresh(); return }
+        if action == .rest {
+            let date=now(); if commit({ _=try $0.care(.rest,now:date) }) { world.sleep(archive.sleeping) }; refresh(); return
+        }
+        guard !archive.sleeping, !world.careInProgress else { return }
+        let destination = world.position < 0.5 ? 0.82 : 0.18
+        switch action {
+        case .meal: _=world.feed(at:destination)
+        case .snack: if archive.coins >= 15 { _=world.feed(at:destination,treat:true) }
+        case .cuddle: _=world.cuddle()
+        case .wash: _=world.wash()
+        case .rest: break
+        }
+        message=activityName(world,language); refresh()
+    }
+    @objc func toolAction(_ sender:NSButton) { selectTool(PlaygroundTool.allCases[min(3,max(0,sender.tag))]); barToys?.dismissPopover(nil) }
+    func selectTool(_ tool:PlaygroundTool) {
+        guard archive.adopted, !protectedSave, !archive.sleeping, session == nil, !world.careInProgress, pendingInteraction == nil else { return }
+        selectedTool=tool; message=""; refresh(); window?.makeFirstResponder(rail)
+    }
+    func settleInteraction() {
+        guard let event=pendingInteraction else { return }
+        let action:Care
+        switch event { case .meal: action = .meal; case .treat: action = .snack; case .cuddle,.fetched: action = .cuddle; case .wash: action = .wash }
         let date=now(); var reward=0
-        if commit({ reward=try $0.care(action,now:date) }) { message=t(language,reward > 0 ? "Küçük bakım, büyük bağ · +\(reward) XP" : "Dostunla ilgilendin.",reward > 0 ? "A little care, a stronger bond · +\(reward) XP" : "You cared for your friend."); refresh() }
+        if commit({ reward=try $0.care(action,now:date) }) {
+            pendingInteraction=nil
+            if case .fetched = event { message=t(language,"Oyuncağını geri getirdi!", "Your friend brought the toy back!") }
+            else { message=t(language,"Bakım tamamlandı.","Care completed.") }
+            if reward > 0 { message += " · +\(reward) XP" }; refresh()
+        }
     }
     @objc func languageAction() { _=commit { $0.language = $0.language == .tr ? .en : .tr }; refresh() }
     @objc func claimAction() { let date=now(); if commit({ _=$0.claimDaily(now:date) }) { message=t(language,"Küçük üçlü tamam! +40 para, +20 XP.","Little trio complete! +40 coins, +20 XP."); refresh() } }
@@ -214,12 +264,12 @@ final class PetController: NSWindowController, NSWindowDelegate, NSTouchBarDeleg
     }
     @objc func gameAction(_ sender:NSButton) { chooseGame(MiniGame.allCases[min(2,max(0,sender.tag))]) }
     func chooseGame(_ game:MiniGame) {
-        guard archive.adopted, !protectedSave, !archive.sleeping else { return }
+        guard archive.adopted, !protectedSave, !archive.sleeping, !world.careInProgress, pendingInteraction == nil else { return }
         if session?.phase == .finished && !rewardSaved { completeRound(); guard rewardSaved else { return } }
         if session?.phase == .running || session?.phase == .paused {
             pause(); let alert=NSAlert(); alert.messageText=t(language,"Bu turdan çıkılsın mı?","Leave this round?"); alert.informativeText=t(language,"Bitmemiş turun ödülü alınmaz. Önceki ilerleyişin kayıtlı.","An unfinished round has no reward. Previous progress is saved."); alert.addButton(withTitle:t(language,"Yeni oyun","New game")); alert.addButton(withTitle:t(language,"Turda kal","Stay")); if alert.runModal() != .alertFirstButtonReturn { return }
         }
-        session=GameSession(game:game,seed:UInt64.random(in:1...UInt64.max)); rewardSaved=false; message=""; refresh(); window?.makeFirstResponder(rail)
+        world.cancel(); session=GameSession(game:game,seed:UInt64.random(in:1...UInt64.max)); rewardSaved=false; message=""; refresh(); window?.makeFirstResponder(rail)
     }
     @objc func playAction() {
         guard !protectedSave, !archive.sleeping else { return }
@@ -228,6 +278,7 @@ final class PetController: NSWindowController, NSWindowDelegate, NSTouchBarDeleg
     }
     func pause() { session?.pause(); refresh() }
     @objc func homeAction() {
+        if pendingInteraction != nil { settleInteraction(); return }
         if session?.phase == .finished && !rewardSaved { completeRound(); guard rewardSaved else { return } }
         if session?.phase == .running || session?.phase == .paused {
             pause(); let alert=NSAlert(); alert.messageText=t(language,"Yuvaya dönülsün mü?","Return home?"); alert.informativeText=t(language,"Bitmemiş tur için ödül verilmez. Kayıtlı ilerleyiş korunur.","An unfinished round has no reward. Saved progress is kept."); alert.addButton(withTitle:t(language,"Yuvaya dön","Return home")); alert.addButton(withTitle:t(language,"Turda kal","Stay")); if alert.runModal() != .alertFirstButtonReturn { return }
@@ -235,12 +286,30 @@ final class PetController: NSWindowController, NSWindowDelegate, NSTouchBarDeleg
         session=nil; rewardSaved=false; refresh()
     }
     func input(_ input:RailInput) {
-        if session == nil { if case .tap = input { performCare(archive.sleeping ? .rest : .cuddle) }; return }
+        guard archive.adopted, !protectedSave, pendingInteraction == nil else { return }
+        if session == nil {
+            if archive.sleeping { if case .tap = input { performCare(.rest) }; return }
+            switch input {
+            case .tap(let x):
+                switch selectedTool {
+                case .follow: if abs(x-world.position) < 0.055 { _=world.cuddle() } else { _=world.follow(x) }
+                case .ball: _=world.throwToy(.ball,toward:x)
+                case .bone: _=world.throwToy(.bone,toward:x)
+                case .food: _=world.feed(at:x)
+                }
+            case .move(let x): if selectedTool == .follow { _=world.follow(x) }
+            case .release(let x): if selectedTool == .ball || selectedTool == .bone { _=world.throwToy(selectedTool == .ball ? .ball : .bone,toward:x) }
+            case .pause: world.cancel()
+            case .pad(let index): if PlaygroundTool.allCases.indices.contains(index) { selectTool(PlaygroundTool.allCases[index]) }
+            }
+            refresh(); return
+        }
         switch input {
         case .pause: if session?.phase == .running { pause() } else if session?.phase == .paused { playAction() }
         case .tap(let x): if session?.phase == .ready || session?.phase == .paused { playAction() } else { _=session?.tap(x) }
         case .move(let x): session?.move(x); if session?.game == .stars { _=session?.tap(min(1,max(0,x))) }
         case .pad(let index): if session?.game == .memory { _=session?.tap((Double(index)+0.5)/4) }
+        case .release: break
         }
         refresh()
     }
@@ -249,19 +318,26 @@ final class PetController: NSWindowController, NSWindowDelegate, NSTouchBarDeleg
         let date=now()
         if commit({ _=try $0.settle(round,now:date) }) { rewardSaved=true; message=t(language,"Tur kaydedildi · +\(6+min(60,round.score)) pati parası","Round saved · +\(6+min(60,round.score)) paw coins"); refresh() }
     }
-    func step(_ delta:Double) { let wasRunning=session?.phase == .running; session?.tick(delta); if wasRunning && session?.phase == .finished { completeRound() }; refresh() }
+    func advanceCompanion(_ delta:Double) {
+        guard session == nil, archive.adopted, !protectedSave, pendingInteraction == nil else { return }
+        if let event=world.tick(delta,roaming:motion).first { pendingInteraction=event; settleInteraction() }
+    }
+    func step(_ delta:Double) { let wasRunning=session?.phase == .running; session?.tick(delta); if wasRunning && session?.phase == .finished { completeRound() }; advanceCompanion(delta); refresh() }
     func tick() {
         let stamp=ProcessInfo.processInfo.systemUptime, delta=stamp-lastTick; lastTick=stamp
         if session?.phase == .running { session?.tick(delta); if session?.phase == .finished { completeRound() } }
-        if NSApp.isActive && (session?.phase == .running || stamp-lastPaint >= 0.2) {
-            lastPaint=stamp; habitat.clock=motion ? stamp : 0
-            for view in [rail,touchRail].compactMap({$0}) { view.clock=motion ? stamp : 0; view.session=session }
+        if NSApp.isActive && window?.isMiniaturized != true { advanceCompanion(delta) }
+        if NSApp.isActive && window?.isMiniaturized != true {
+            habitat.clock=motion ? stamp : 0
+            habitat.world=world
+            for view in [rail,touchRail].compactMap({$0}) { view.clock=motion ? stamp : 0; view.session=session; view.world=world }
         }
         if stamp-lastRefresh >= 1 { lastRefresh=stamp; refresh() }
         if archive.adopted && !protectedSave && now().timeIntervalSince(lastSaved) >= 60 { _=commit { _=$0.advance(to:now()) } }
     }
     func saveBeforeQuit() -> Bool {
         pause()
+        if pendingInteraction != nil { settleInteraction(); if pendingInteraction != nil { return false } }
         if session?.phase == .finished && !rewardSaved { completeRound(); if !rewardSaved { return false } }
         return !archive.adopted || protectedSave || commit { _=$0.advance(to:now()) }
     }
@@ -279,7 +355,7 @@ final class PetController: NSWindowController, NSWindowDelegate, NSTouchBarDeleg
             let imported=try store.importFile(url); let alert=NSAlert(); alert.messageText=t(language,"\(imported.name) yedeği geri yüklensin mi?","Restore \(imported.name)'s backup?")
             alert.informativeText=t(language,"Bu Mac’teki mevcut kayıt değişir. Eski ham kayıt kurtarma kopyası olarak korunur. Yedekler birleştirilmez.","The local save will be replaced. Its original raw data is kept as a recovery copy. Backups are not merged.")
             alert.addButton(withTitle:t(language,"Geri yükle","Restore")); alert.addButton(withTitle:t(language,"Vazgeç","Cancel")); guard alert.runModal() == .alertFirstButtonReturn else { return }
-            try store.restore(imported); archive=imported; protectedSave=false; recoveryAvailable=false; session=nil; rewardSaved=false; lastSaved=now(); errorMessage=""; message=t(language,"Yedek geri yüklendi.","Backup restored.")
+            try store.restore(imported); archive=imported; protectedSave=false; recoveryAvailable=false; session=nil; world=CompanionWorld(); pendingInteraction=nil; rewardSaved=false; lastSaved=now(); errorMessage=""; message=t(language,"Yedek geri yüklendi.","Backup restored.")
         } catch { errorMessage=t(language,"Yedek yüklenemedi: ","Restore failed: ") + String(describing:error) }; refresh()
     }
     @objc func recoverAction() {
@@ -289,7 +365,7 @@ final class PetController: NSWindowController, NSWindowDelegate, NSTouchBarDeleg
         do { archive=try store.recoverPrevious(); protectedSave=false; recoveryAvailable=false; errorMessage=""; lastSaved=now(); message=t(language,"Önceki kayıt kurtarıldı.","Previous save recovered.") } catch { errorMessage=String(describing:error) }; refresh()
     }
     func makeBar() -> NSTouchBar {
-        let bar=NSTouchBar(); bar.delegate=self; bar.defaultItemIdentifiers=[.petMenu,.petRail,.petAction]; bar.principalItemIdentifier = .petRail; return bar
+        let bar=NSTouchBar(); bar.delegate=self; bar.defaultItemIdentifiers=[.petMenu,.petRail,.petToys,.petAction]; bar.principalItemIdentifier = .petRail; return bar
     }
     func touchBar(_ touchBar:NSTouchBar,makeItemForIdentifier identifier:NSTouchBarItem.Identifier) -> NSTouchBarItem? {
         switch identifier {
@@ -299,6 +375,14 @@ final class PetController: NSWindowController, NSWindowDelegate, NSTouchBarDeleg
             view.onInput = { [weak self] input in self?.input(input) }; item.view=view; touchRail=view; view.archive=archive; view.session=session; return item
         case .petAction:
             let item=NSCustomTouchBarItem(identifier:identifier); let b=NSButton(title:"Mama",target:self,action:#selector(barActionTapped)); b.bezelColor=Palette.green; item.view=b; barAction=b; refresh(); return item
+        case .petToys:
+            let item=NSPopoverTouchBarItem(identifier:identifier); item.showsCloseButton=true
+            let menu=NSTouchBar(); var ids:[NSTouchBarItem.Identifier]=[]; var items:Set<NSTouchBarItem>=[]
+            for (i,tool) in PlaygroundTool.allCases.enumerated() {
+                let id=NSTouchBarItem.Identifier("com.metealpkarvan.TouchBarPet.tool."+tool.rawValue); ids.append(id)
+                let child=NSCustomTouchBarItem(identifier:id); let b=NSButton(title:toolName(tool,language),target:self,action:#selector(toolAction)); b.tag=i; child.view=b; items.insert(child); barToolButtons[tool]=b
+            }
+            menu.defaultItemIdentifiers=ids; menu.templateItems=items; item.popoverTouchBar=menu; barToys=item; refresh(); return item
         case .petMenu:
             let item=NSPopoverTouchBarItem(identifier:identifier); item.collapsedRepresentationLabel="Pati"; item.showsCloseButton=true
             let bar=NSTouchBar(); var ids:[NSTouchBarItem.Identifier]=[]; var items:Set<NSTouchBarItem>=[]

@@ -111,6 +111,70 @@ do {
     for game in MiniGame.allCases {
         let done=finished(game); try check(done.phase == .finished && done.secondsLeft==0,"\(game.rawValue) ends and reports zero remaining seconds")
     }
+    // The interactive strip is tested as a time-based state machine, not drawing coordinates.
+    func advance(_ world:inout CompanionWorld,_ seconds:Double,roaming:Bool=false)->[CompanionEvent] {
+        var events:[CompanionEvent]=[]
+        for _ in 0..<Int(seconds/0.05) { events += world.tick(0.05,roaming:roaming) }
+        return events
+    }
+    var world=CompanionWorld(seed:9)
+    try check(world.follow(0.9) && world.activity == .running,"Distant touch starts running")
+    _=world.tick(0.05,roaming:false)
+    try check(world.position>0.5 && world.position<0.9,"Touch moves gradually instead of teleporting")
+    _=advance(&world,2)
+    try check(abs(world.position-0.9)<0.003 && world.activity == .idle,"Follow reaches the touched position and stops")
+    _=world.follow(0.8); try check(world.activity == .walking,"Nearby touch uses a walk")
+    _=advance(&world,1)
+    try check(world.facing == -1,"Walking reverses the character's facing direction")
+    let beforeInvalid=world.position
+    try check(!world.follow(.nan) && !world.feed(at:.infinity) && !world.throwToy(.ball,toward:.nan),"Nonfinite interaction coordinates are rejected")
+    try check(world.position==beforeInvalid,"Invalid input cannot corrupt companion coordinates")
+    _=world.follow(99); _=advance(&world,2)
+    try check(world.position==0.95,"Right edge is bounded")
+    _=world.follow(-99); _=advance(&world,7)
+    try check(world.position==0.05,"Left edge is bounded")
+    world=CompanionWorld(); _=world.feed(at:0.9)
+    try check(world.careInProgress && world.object == .meal,"Food creates a visible pending bowl")
+    let firstMealEvents=advance(&world,1)
+    try check(firstMealEvents.isEmpty && world.position<0.9,"Care is not emitted before reaching food")
+    try check(!world.throwToy(.ball,toward:0.1) && !world.feed(at:0.2),"Pending care cannot be replaced or duplicated by repeated input")
+    _=advance(&world,1.6)
+    try check(world.activity == .eating && world.eatingProgress<1,"Arrival begins a timed eating phase")
+    let mealEvents=advance(&world,2)
+    try check(mealEvents == [.meal] && world.object == nil,"Eating emits exactly one meal and clears the bowl")
+    try check(advance(&world,3).isEmpty,"A finished bowl cannot award again")
+    _=world.feed(at:0.2,treat:true)
+    try check(advance(&world,7) == [.treat],"Treat is settled only after travel and eating")
+    for toy in [PlayObject.ball,.bone] {
+        world=CompanionWorld(); let launch=world.position; _=world.throwToy(toy,toward:0.92)
+        try check(world.activity == .chasing && world.isFlying,"\(toy.rawValue) starts a visible flight and chase")
+        _=world.tick(0.05,roaming:false)
+        try check(world.objectLift>0 && world.objectPosition>launch && world.objectPosition<0.92,"\(toy.rawValue) follows an airborne trajectory")
+        let chaseEvents=advance(&world,1)
+        try check(chaseEvents.isEmpty && world.activity == .returning && world.carrying,"\(toy.rawValue) pickup starts return without an early reward")
+        let fetchEvents=advance(&world,3)
+        try check(fetchEvents == [.fetched(toy)] && abs(world.position-launch)<0.003,"\(toy.rawValue) returns to its launch point and settles once")
+        try check(world.completedFetches==1 && advance(&world,2).isEmpty,"\(toy.rawValue) cannot settle twice")
+    }
+    world=CompanionWorld(); _=world.throwToy(.ball,toward:0.5)
+    try check(abs(world.target-world.position)>=0.12,"Throwing beside the pet still gives room to fetch")
+    _=advance(&world,0.2); _=world.follow(0.1)
+    try check(advance(&world,5).isEmpty && world.object == nil,"Interrupted fetch has no reward")
+    _=world.feed(at:0.8); world.sleep(true)
+    try check(advance(&world,20).isEmpty && world.activity == .sleeping && world.object == nil,"Rest cancels pending care and freezes movement")
+    try check(!world.follow(0.1) && !world.throwToy(.bone,toward:0.8) && !world.cuddle(),"Sleeping pet refuses active interactions")
+    world.sleep(false); try check(world.activity == .idle && world.follow(0.6),"Wake restores interactive movement")
+    world=CompanionWorld(); _=advance(&world,4,roaming:true)
+    try check(world.moving,"Idle companion starts an autonomous walk")
+    world=CompanionWorld(); _=advance(&world,20,roaming:false)
+    try check(world.activity == .idle && world.position==0.5,"Reduced-motion roaming can be disabled without changing position")
+    _=world.follow(0.8); _=advance(&world,2,roaming:false)
+    try check(abs(world.position-0.8)<0.003,"Explicit input still works with roaming disabled")
+    let clock=world.clock; _=world.tick(-1); _=world.tick(.nan); _=world.tick(.infinity)
+    try check(world.clock==clock,"Invalid frame deltas do not advance the simulation")
+    _=world.tick(100,roaming:false); try check(abs(world.clock-clock-0.05)<0.0001,"Large frame gaps are capped without catch-up rewards")
+    world=CompanionWorld(); _=world.cuddle(); try check(advance(&world,1) == [.cuddle],"Cuddle completes a timed interaction once")
+    _=world.wash(); try check(advance(&world,2) == [.wash],"Wash completes a timed interaction once")
     var invalid=try pet(); invalid.needs.food = .nan
     try rejects("Nonfinite needs rejected") { try invalid.validate() }
     invalid=try pet(); invalid.coins = -1; try rejects("Negative currency rejected") { try invalid.validate() }

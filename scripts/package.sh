@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 PET_PROJECT="$(cd "$(dirname "$0")/.." && pwd)"
-PET_VERSION="${1:-1.0.0}"
+PET_VERSION="${1:-1.1.0}"
 if [[ ! "$PET_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo 'Version must use MAJOR.MINOR.PATCH.' >&2
   exit 1
@@ -20,6 +20,7 @@ mkdir -p "$PET_APP/Contents/MacOS" "$PET_APP/Contents/Resources"
 lipo -create "$PET_INTEL/TouchBarPet" "$PET_ARM/TouchBarPet" -output "$PET_APP/Contents/MacOS/TouchBarPet"
 cp Resources/Info.plist "$PET_APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $PET_VERSION" "$PET_APP/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $PET_VERSION" "$PET_APP/Contents/Info.plist"
 cp LICENSE "$PET_APP/Contents/Resources/LICENSE.txt"
 "$PET_INTEL/TouchBarPet" --iconset "$PET_STAGING/AppIcon.iconset"
 iconutil -c icns "$PET_STAGING/AppIcon.iconset" -o "$PET_APP/Contents/Resources/AppIcon.icns"

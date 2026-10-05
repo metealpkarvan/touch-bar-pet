@@ -2,7 +2,17 @@
 
 Pati Cepte uses a narrow strip as a shared playground rather than a dashboard of tiny menus. A desktop habitat introduces the pet and makes needs, currency and goals readable. The physical and window strips draw the same character and use the same input path.
 
-The original visual system combines warm paper, apricot/cocoa/cloud fur, muted green foliage and a dark playground. The character is a vector drawing with species-specific ears, tail, muzzle, resting eyes and earned accessories. A slow idle bob and blink respect macOS Reduce Motion. No third-party or generated raster art is required.
+The original visual system combines warm paper, apricot/cocoa/cloud fur, muted green foliage and a dark playground. The living side-view character has species-specific ears, four articulated paws, turning, tail movement, blinking, an eating pose and earned accessories. Reduce Motion disables decorative movement and automatic roaming while explicit travel remains usable. No third-party or generated raster art is required.
+
+## Living interactions
+
+`CompanionWorld` shares normalized positions between the habitat, desktop strip and physical Touch Bar. It moves incrementally instead of teleporting: walking 0.16, running 0.42, chasing 0.48 and returning 0.34 strip widths per second. A distant Follow target uses running. After 3.8 idle seconds a seeded roaming target is selected; Reduce Motion disables this automatic walk.
+
+Thrown balls/bones follow a bounded flight arc. The pet runs to the destination, waits until the flight lands, carries the toy back to the launch point and celebrates before emitting one fetch event. A new throw or Follow input cancels an unfinished fetch without rewards. Drag release changes a toy's destination once rather than restarting its flight on every move sample.
+
+A food bowl remains visible until the pet reaches it and completes 1.3 seconds of eating. Cuddle takes 0.65 seconds; washing takes one second. Care in progress prevents conflicting care/game starts; Rest or Escape cancels it. Completion is committed through existing care rules, preserving reward caps. Fetch uses the existing cuddle/joy reward and does not count as the daily short-round goal.
+
+The controller keeps a failed completion pending and offers retry; the archive changes only after a successful write. Frame deltas cap at 0.05 seconds, background/minimized frames do not advance the world, and no unfinished interaction is reconstructed on reopening. Existing version-1 JSON saves are unchanged.
 
 ## Care and progression
 

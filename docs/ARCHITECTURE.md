@@ -1,10 +1,10 @@
 # Architecture
 
-`PetCore` contains the Codable archive, validated care/progression rules, daily calendar state, deterministic mini-game sessions and persistence store. It imports Foundation only. `TouchBarPet` provides native AppKit controls, original vector drawing, one desktop strip and real public `NSTouchBar` items. There are no external Swift packages.
+`PetCore` contains the Codable archive, validated care/progression rules, daily calendar state, deterministic mini-game sessions, `CompanionWorld` and persistence store. It imports Foundation only. `TouchBarPet` provides native AppKit controls, original vector drawing, one desktop strip and real public `NSTouchBar` items. There are no external Swift packages.
 
-The desktop and physical `PetRailView` invoke `PetController.input`. The controller dispatches normalized positions to `GameSession`; both views then render that same session. Care popover buttons and desktop buttons use the same handlers. `NSTouchBar` belongs to the frontmost app's responder chain; private global replacement APIs are not used.
+The habitat and both `PetRailView` surfaces invoke `PetController.input`. The controller dispatches normalized positions to `CompanionWorld` at home and `GameSession` during a short round. All views render shared state. Care and toy popovers use the same handlers as desktop buttons; a completed world event is persisted through existing care rules. `LivingArt.swift` draws the moving character and objects without raster dependencies. `NSTouchBar` belongs to the frontmost app's responder chain; private global replacement APIs are not used.
 
-All archive changes are copy/validate/write/commit transactions. The UI keeps the old archive when persistence fails. Completed rounds remain available for settlement retry. Short running rounds are in-memory only. A 30 Hz timer advances active game frames and paints idle motion at 5 Hz; focus loss pauses games. Archive time catches up periodically and on actions/quit. No timer needs to run while the app is closed.
+All archive changes are copy/validate/write/commit transactions. The UI keeps the old archive when persistence fails. Completed rounds and finished companion interactions remain available for settlement retry. Running rounds, walking positions and unfinished interactions are in memory only; version-1 save fields are unchanged. A 30 Hz timer advances/paints the foreground world; background and minimized windows do not advance it. Focus loss pauses short games. Archive time catches up periodically and on actions/quit. No timer needs to run while the app is closed.
 
 ## Save and recovery
 

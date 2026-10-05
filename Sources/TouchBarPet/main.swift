@@ -1,5 +1,6 @@
 import AppKit
 import PetCore
+import ImageIO
 
 final class PetDelegate:NSObject,NSApplicationDelegate {
     var controller:PetController?
@@ -27,7 +28,7 @@ final class PetDelegate:NSObject,NSApplicationDelegate {
         let save=NSMenuItem(); menu.addItem(save); let saveMenu=NSMenu(title:"Dost / Pet"); save.submenu=saveMenu
         for (title,action,key) in [("JSON yedekle / Export JSON",#selector(PetController.exportAction),"s"),("Yedek yükle / Restore JSON",#selector(PetController.importAction),"o")] { let i=NSMenuItem(title:title,action:action,keyEquivalent:key); i.target=desk; saveMenu.addItem(i) }
     }
-    @objc func aboutAction() { NSApp.orderFrontStandardAboutPanel(options:[.applicationName:"Pati Cepte · Touch Bar Pet",.applicationVersion:"1.0.0",.credits:NSAttributedString(string:"A little friend, a little play.\nMete Alp Karvan · MIT · 2026")]) }
+    @objc func aboutAction() { NSApp.orderFrontStandardAboutPanel(options:[.applicationName:"Pati Cepte · Touch Bar Pet",.applicationVersion:"1.1.0",.credits:NSAttributedString(string:"A little friend, a little play.\nMete Alp Karvan · MIT · 2026")]) }
     @objc func sourceAction() { NSWorkspace.shared.open(URL(string:"https://github.com/metealpkarvan/touch-bar-pet")!) }
 }
 func png(_ view:NSView,_ url:URL)throws {
@@ -49,9 +50,12 @@ func smoke(_ screenshots:URL?)throws {
           let physical=(bar.item(forIdentifier:.petRail) as? NSCustomTouchBarItem)?.view as? PetRailView,
           let action=(bar.item(forIdentifier:.petAction) as? NSCustomTouchBarItem)?.view as? NSButton else { throw PetError.invalid("Touch Bar items missing") }
     try check(popover.popoverTouchBar.defaultItemIdentifiers.count==7,"Physical Touch Bar popover exposes four care actions and three games")
-    action.performClick(nil); try check(desk.archive.daily.meals==1,"Touch Bar feed changes the shared persistent model")
+    func advanceDesk(_ seconds:Double) { for _ in 0..<Int(seconds/0.05) { desk.step(0.05) } }
+    let beforeMeal=desk.archive
+    action.performClick(nil); try check(desk.archive==beforeMeal && desk.world.object == .meal,"Touch Bar feed places a bowl before changing persistent needs")
+    advanceDesk(4); try check(desk.archive.daily.meals==1,"Touch Bar meal saves only after travel and eating")
     let wash=(popover.popoverTouchBar.item(forIdentifier:NSTouchBarItem.Identifier("com.metealpkarvan.TouchBarPet.care.wash")) as? NSCustomTouchBarItem)?.view as? NSButton
-    wash?.performClick(nil); try check(desk.archive.daily.washes==1,"Popover washing dispatches the real care handler")
+    wash?.performClick(nil); advanceDesk(1.2); try check(desk.archive.daily.washes==1,"Popover washing dispatches and completes the real care handler")
     desk.refresh(); try check(physical.archive==desk.archive && desk.rail.archive==desk.archive,"Physical and desktop strips share the pet archive")
     let stored=PetStore(directory:temp).load().archive
     try check(stored?.coins==desk.archive.coins && stored?.xp==desk.archive.xp,"Actual care handlers save before reporting success")
@@ -68,6 +72,31 @@ func smoke(_ screenshots:URL?)throws {
     desk.claimButton.performClick(nil); try check(desk.archive.daily.claimed,"Daily gift button settles the completed trio")
     let paidGift=desk.archive; desk.claimButton.performClick(nil); try check(desk.archive==paidGift,"Disabled daily gift cannot award twice")
     desk.homeAction(); try check(desk.session==nil,"Finished round returns to pet habitat")
+    guard let toys=bar.item(forIdentifier:.petToys) as? NSPopoverTouchBarItem else { throw PetError.invalid("Toy controls missing") }
+    try check(toys.popoverTouchBar.defaultItemIdentifiers.count==4,"Touch Bar exposes follow, ball, bone and food tools")
+    desk.selectTool(.follow); let start=desk.world.position; physical.onInput?(.tap(0.92)); desk.step(0.05)
+    try check(desk.world.position>start && desk.world.position<0.92,"Touch Bar follow handler drives gradual movement")
+    try check(physical.world.position==desk.world.position && desk.habitat.world.position==desk.world.position,"Habitat, desktop and Touch Bar share the same live position")
+    advanceDesk(3)
+    physical.onInput?(.move(0.22)); advanceDesk(3)
+    try check(abs(desk.world.position-0.22)<0.003 && desk.world.facing == -1,"Dragging moves the real character and reverses its facing")
+    let toyButton=(toys.popoverTouchBar.item(forIdentifier:NSTouchBarItem.Identifier("com.metealpkarvan.TouchBarPet.tool.ball")) as? NSCustomTouchBarItem)?.view as? NSButton
+    toyButton?.performClick(nil)
+    try check(desk.selectedTool == .ball && desk.barToys?.collapsedRepresentationLabel == "Top","Physical toy menu updates the shared selected tool")
+    let beforeFetch=desk.archive; physical.onInput?(.tap(0.9)); advanceDesk(0.25)
+    try check(desk.world.isFlying && desk.world.objectLift>0 && desk.archive==beforeFetch,"Native ball throw animates before any fetch award")
+    advanceDesk(6)
+    try check(desk.world.completedFetches==1 && abs(desk.world.position-0.22)<0.003,"Native fetch chases, picks up and returns the ball")
+    try check(PetStore(directory:temp).load().archive==desk.archive,"Completed fetch is persisted by the actual care settlement path")
+    desk.selectTool(.bone); physical.onInput?(.tap(0.75)); advanceDesk(5)
+    try check(desk.world.completedFetches==2 && desk.world.object == nil,"Native bone fetch completes and clears the carried object")
+    desk.selectTool(.food); let meals=desk.archive.daily.meals; physical.onInput?(.tap(0.8)); advanceDesk(0.2)
+    try check(desk.archive.daily.meals==meals && desk.world.careInProgress,"Placed food does not immediately count as a meal")
+    try check(desk.gameButtons[.stars]?.isEnabled == false,"A meal in progress prevents conflicting mini-game selection")
+    advanceDesk(6)
+    try check(desk.archive.daily.meals==meals+1 && !desk.world.careInProgress,"Placed food is saved after the complete eating animation")
+    desk.selectTool(.follow); physical.onInput?(.tap(desk.world.position)); advanceDesk(1)
+    try check(desk.world.activity != .cuddling && desk.pendingInteraction == nil,"Touching the pet completes a cuddle once")
     desk.careButtons[.rest]?.performClick(nil); try check(desk.archive.sleeping,"Native rest button saves sleeping state")
     desk.chooseGame(.rally); try check(desk.session==nil,"Sleeping pet does not enter a game")
     action.performClick(nil); try check(!desk.archive.sleeping,"Touch Bar wakes the sleeping pet")
@@ -81,7 +110,9 @@ func smoke(_ screenshots:URL?)throws {
         try png(desk.window!.contentView!,folder.appendingPathComponent("desktop-tr.png"))
         desk.languageButton.performClick(nil); try png(desk.window!.contentView!,folder.appendingPathComponent("desktop-en.png")); desk.languageButton.performClick(nil)
         physical.frame=NSRect(x:0,y:0,width:600,height:30); physical.session=nil; physical.archive=desk.archive
+        physical.world=desk.world
         try png(physical,folder.appendingPathComponent("touchbar-pet.png"))
+        try livingPreview(desk,physical,folder)
         for (game,name) in [(MiniGame.stars,"stars"),(.rally,"rally"),(.memory,"memory")] {
             desk.chooseGame(game); desk.playAction(); desk.step(0.1); physical.session=desk.session
             try png(physical,folder.appendingPathComponent("touchbar-"+name+".png"))
@@ -96,9 +127,34 @@ func smoke(_ screenshots:URL?)throws {
     try check(try Data(contentsOf:store.file)==raw,"Native care cannot overwrite corrupt raw progress")
     let denied=temp.appendingPathComponent("not-directory"); try Data("x".utf8).write(to:denied)
     let failing=PetController(store:PetStore(directory:denied),archive:pet,timers:false,now:{date})
-    let unchanged=failing.archive; failing.performCare(.meal)
+    let unchanged=failing.archive; failing.performCare(.meal); for _ in 0..<100 { failing.step(0.05) }
     try check(failing.archive==unchanged && !failing.errorMessage.isEmpty,"Failed persistence rolls native action back without reporting saved progress")
+    try check(failing.pendingInteraction == .meal && failing.homeButton.isEnabled,"A completed interaction survives a failed write and exposes retry")
+    try FileManager.default.removeItem(at:denied); failing.homeButton.performClick(nil)
+    try check(failing.pendingInteraction == nil && failing.archive.daily.meals==pet.daily.meals+1,"Retry settles the finished interaction after storage becomes writable")
+    let paidMeal=failing.archive; failing.homeButton.performClick(nil)
+    try check(failing.archive==paidMeal,"Repeated retry cannot pay for the same interaction twice")
     print("\(checks) AppKit integration checks passed. No real user save, clipboard, permission or physical touch was changed.")
+}
+func livingPreview(_ desk:PetController,_ strip:PetRailView,_ folder:URL)throws {
+    let url=folder.appendingPathComponent("touchbar-live.gif")
+    guard let destination=CGImageDestinationCreateWithURL(url as CFURL,"com.compuserve.gif" as CFString,360,nil) else { throw PetError.invalid("GIF destination unavailable") }
+    CGImageDestinationSetProperties(destination,[kCGImagePropertyGIFDictionary:[kCGImagePropertyGIFLoopCount:0]] as CFDictionary)
+    let originalFrame=strip.frame; strip.frame=NSRect(x:0,y:0,width:600,height:48)
+    desk.world=CompanionWorld(seed:9); desk.selectTool(.follow); desk.input(.tap(0.15))
+    for frame in 0..<360 {
+        if frame==30 { desk.selectTool(.ball); desk.input(.tap(0.86)) }
+        if frame==140 { desk.selectTool(.bone); desk.input(.tap(0.58)) }
+        if frame==220 { desk.selectTool(.food); desk.input(.tap(0.80)) }
+        desk.step(0.05)
+        if [45,160,305].contains(frame) { try png(strip,folder.appendingPathComponent(frame==45 ? "touchbar-fetch.png" : frame==160 ? "touchbar-bone.png" : "touchbar-meal.png")) }
+        guard let bitmap=strip.bitmapImageRepForCachingDisplay(in:strip.bounds) else { throw PetError.invalid("GIF frame unavailable") }
+        strip.cacheDisplay(in:strip.bounds,to:bitmap)
+        guard let image=bitmap.cgImage else { throw PetError.invalid("GIF bitmap unavailable") }
+        CGImageDestinationAddImage(destination,image,[kCGImagePropertyGIFDictionary:[kCGImagePropertyGIFDelayTime:0.05,kCGImagePropertyGIFUnclampedDelayTime:0.05]] as CFDictionary)
+    }
+    guard CGImageDestinationFinalize(destination) else { throw PetError.invalid("GIF write failed") }
+    strip.frame=originalFrame; desk.selectTool(.follow)
 }
 let app=NSApplication.shared
 if let index=CommandLine.arguments.firstIndex(of:"--iconset"), CommandLine.arguments.indices.contains(index+1) {

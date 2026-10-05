@@ -91,10 +91,18 @@ func drawPet(_ rect: NSRect, archive: PetArchive, clock: Double = 0, motion: Boo
 
 final class HabitatView: NSView {
     var archive = PetArchive() { didSet { needsDisplay = true } }
+    var world = CompanionWorld() { didSet { needsDisplay = true } }
+    var onInput: ((RailInput) -> Void)?
+    var gestureStart: Double?
     var clock: Double = 0 { didSet { needsDisplay = true } }
     var motion = true
-    override init(frame: NSRect) { super.init(frame:frame); setAccessibilityElement(true); setAccessibilityRole(.image) }
+    override init(frame: NSRect) { super.init(frame:frame); allowedTouchTypes = [.direct]; setAccessibilityElement(true); setAccessibilityRole(.button) }
     required init?(coder:NSCoder) { fatalError() }
+    func position(_ point: NSPoint) -> Double { min(1, max(0, Double((point.x - 42) / max(1, bounds.width - 84)))) }
+    override func mouseDown(with event: NSEvent) { let x=position(convert(event.locationInWindow, from:nil)); gestureStart=x; onInput?(.tap(x)) }
+    override func mouseDragged(with event: NSEvent) { onInput?(.move(position(convert(event.locationInWindow, from: nil)))) }
+    override func mouseUp(with event: NSEvent) { let x=position(convert(event.locationInWindow,from:nil)); if let start=gestureStart, abs(x-start)>0.03 { onInput?(.release(x)) }; gestureStart=nil }
+    override func accessibilityPerformPress() -> Bool { onInput?(.tap(world.position)); return true }
     override func draw(_ dirtyRect:NSRect) {
         fill(bounds,Palette.paper,radius:16)
         let sky = NSRect(x:8,y:8,width:bounds.width-16,height:bounds.height-16)
@@ -102,10 +110,12 @@ final class HabitatView: NSView {
         ellipse(NSRect(x:bounds.width-83,y:bounds.height-68,width:36,height:36),Palette.gold.withAlphaComponent(0.7))
         for x in stride(from:CGFloat(10),to:bounds.width,by:26) { line(NSPoint(x:x,y:8),NSPoint(x:x+32,y:bounds.height-8),NSColor.white.withAlphaComponent(0.13)) }
         fill(NSRect(x:8,y:8,width:bounds.width-16,height:45),Palette.green.withAlphaComponent(0.10),radius:12)
-        fill(NSRect(x:26,y:25,width:42,height:16),Palette.coral,radius:7); ellipse(NSRect(x:31,y:36,width:32,height:6),Palette.ink.withAlphaComponent(0.12))
-        drawPet(NSRect(x:bounds.midX-54,y:25,width:108,height:128),archive:archive,clock:clock,motion:motion)
+        let x = 42 + CGFloat(world.position) * (bounds.width - 84)
+        drawLivingPet(NSRect(x:x-50,y:30,width:100,height:80),archive:archive,world:world,motion:motion)
+        let objectX = world.carrying ? x + CGFloat(world.facing) * 42 : 42 + CGFloat(world.objectPosition) * (bounds.width - 84)
+        drawPlayObject(NSPoint(x:objectX,y:world.carrying ? 73 : 36 + (motion ? CGFloat(world.objectLift) * 65 : 0)),size:17,world:world,motion:motion)
+        if archive.adopted { drawText(activityName(world,archive.language),NSRect(x:18,y:bounds.height-35,width:bounds.width-36,height:20),size:12,color:Palette.green,weight:.medium) }
         for (x,y) in [(bounds.width-42,CGFloat(33)),(CGFloat(94),CGFloat(25)),(bounds.width-99,CGFloat(21))] { star(NSPoint(x:x,y:y),radius:3,color:Palette.gold) }
-        if archive.sleeping { drawText("z Z",NSRect(x:bounds.midX+52,y:109,width:60,height:35),size:25,color:Palette.green,weight:.light) }
     }
 }
 
@@ -123,13 +133,16 @@ final class VitalView: NSView {
     }
 }
 
-enum RailInput { case tap(Double), move(Double), pause, pad(Int) }
+enum RailInput { case tap(Double), move(Double), release(Double), pause, pad(Int) }
 final class PetRailView: NSView {
     var archive = PetArchive() { didSet { needsDisplay = true } }
     var session: GameSession? { didSet { needsDisplay = true } }
+    var world = CompanionWorld() { didSet { needsDisplay = true } }
+    var tool: PlaygroundTool = .follow
     var clock: Double = 0 { didSet { needsDisplay = true } }
     var motion = true
     var onInput: ((RailInput) -> Void)?
+    var gestureStart: Double?
     override init(frame:NSRect) {
         super.init(frame:frame); allowedTouchTypes = [.direct]
         setAccessibilityElement(true); setAccessibilityRole(.button)
@@ -139,16 +152,19 @@ final class PetRailView: NSView {
     override var acceptsFirstResponder: Bool { true }
     var arena: NSRect { NSRect(x:10,y:3,width:max(1,bounds.width-20),height:max(1,bounds.height-6)) }
     func position(_ point:NSPoint) -> Double { min(1,max(0,Double((point.x-arena.minX)/arena.width))) }
-    override func mouseDown(with event:NSEvent) { window?.makeFirstResponder(self); onInput?(.tap(position(convert(event.locationInWindow,from:nil)))) }
+    override func mouseDown(with event:NSEvent) { window?.makeFirstResponder(self); let x=position(convert(event.locationInWindow,from:nil)); gestureStart=x; onInput?(.tap(x)) }
     override func mouseDragged(with event:NSEvent) { onInput?(.move(position(convert(event.locationInWindow,from:nil)))) }
-    override func touchesBegan(with event:NSEvent) { if let touch=event.touches(matching:.began,in:self).first { onInput?(.tap(position(touch.location(in:self)))) } }
+    override func mouseUp(with event:NSEvent) { let x=position(convert(event.locationInWindow,from:nil)); if let start=gestureStart, abs(x-start)>0.03 { onInput?(.release(x)) }; gestureStart=nil }
+    override func touchesBegan(with event:NSEvent) { if let touch=event.touches(matching:.began,in:self).first { let x=position(touch.location(in:self)); gestureStart=x; onInput?(.tap(x)) } }
     override func touchesMoved(with event:NSEvent) { if let touch=event.touches(matching:.touching,in:self).first { onInput?(.move(position(touch.location(in:self)))) } }
+    override func touchesEnded(with event:NSEvent) { if let touch=event.touches(matching:.ended,in:self).first { let x=position(touch.location(in:self)); if let start=gestureStart, abs(x-start)>0.03 { onInput?(.release(x)) } }; gestureStart=nil }
+    override func touchesCancelled(with event:NSEvent) { gestureStart=nil }
     override func keyDown(with event:NSEvent) {
         guard !event.isARepeat || [123,124].contains(event.keyCode) else { return }
         switch event.keyCode {
-        case 49: onInput?(.tap(session?.player ?? 0.5))
-        case 123: onInput?(.move((session?.player ?? 0.5)-0.05))
-        case 124: onInput?(.move((session?.player ?? 0.5)+0.05))
+        case 49: onInput?(.tap(session?.player ?? world.position))
+        case 123: onInput?(.move((session?.player ?? world.target)-0.08))
+        case 124: onInput?(.move((session?.player ?? world.target)+0.08))
         case 53: onInput?(.pause)
         default:
             if event.charactersIgnoringModifiers?.lowercased() == "p" { onInput?(.pause) }
@@ -156,15 +172,19 @@ final class PetRailView: NSView {
             else { super.keyDown(with:event) }
         }
     }
-    override func accessibilityPerformPress() -> Bool { onInput?(.tap(session?.player ?? 0.5)); return true }
+    override func accessibilityPerformPress() -> Bool { onInput?(.tap(session?.player ?? world.position)); return true }
     override func draw(_ dirtyRect:NSRect) {
         fill(bounds,Palette.rail,radius:8)
         guard let game=session else {
-            let petSize=min(bounds.height-2,48)
-            drawPet(NSRect(x:arena.midX-petSize/2,y:1,width:petSize,height:petSize),archive:archive,clock:clock,motion:motion)
-            let small=bounds.height<40
-            drawText(archive.name,NSRect(x:14,y:small ? 5 : 18,width:arena.width/2-40,height:19),size:small ? 10 : 13,color:Palette.paper,weight:.semibold)
-            drawText(t(archive.language,archive.sleeping ? "Dinleniyor" : "Dokun · sev",archive.sleeping ? "Resting" : "Tap · cuddle"),NSRect(x:arena.midX+35,y:small ? 5 : 18,width:arena.width/2-45,height:19),size:small ? 9 : 11,color:Palette.gold)
+            NSGraphicsContext.saveGraphicsState(); NSBezierPath(rect:bounds).addClip()
+            line(NSPoint(x:arena.minX,y:3),NSPoint(x:arena.maxX,y:3),Palette.green.withAlphaComponent(0.55),width:1)
+            let h = min(bounds.height-3,40), w = h * 1.25
+            let x = arena.minX + CGFloat(world.position) * arena.width
+            drawLivingPet(NSRect(x:x-w/2,y:2,width:w,height:h),archive:archive,world:world,motion:motion)
+            let objectX = world.carrying ? x + CGFloat(world.facing) * w * 0.43 : arena.minX + CGFloat(world.objectPosition) * arena.width
+            drawPlayObject(NSPoint(x:objectX,y:world.carrying ? h * 0.46 : 6 + (motion ? CGFloat(world.objectLift) * (h * 0.52) : 0)),size:min(10,h * 0.35),world:world,motion:motion)
+            if !archive.adopted { drawText(t(archive.language,"Önce Dost seç","Choose a pet first"),NSRect(x:arena.minX,y:arena.midY-7,width:arena.width,height:18),size:11,color:Palette.paper,alignment:.center) }
+            NSGraphicsContext.restoreGraphicsState()
             return
         }
         let h=arena.height, width=arena.width

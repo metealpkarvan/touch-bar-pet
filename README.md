@@ -1,12 +1,31 @@
 # Pati Cepte · Touch Bar Pet
 
-**A little friend, a little play.** Adopt a cat, dog or rabbit, look after them and play three tiny games together in your MacBook Pro's Touch Bar.
+**A little friend who lives in your Touch Bar.** Adopt a cat, dog or rabbit who walks, runs, follows your finger, fetches a thrown ball or bone and walks over to eat. Keep your saved progress and three short mini games.
 
 [Download the Universal Mac app](https://github.com/metealpkarvan/touch-bar-pet/releases/latest) · [Türkçe kılavuz](README.tr.md) · [Report a bug](https://github.com/metealpkarvan/touch-bar-pet/issues)
 
 [![Native Mac checks](https://github.com/metealpkarvan/touch-bar-pet/actions/workflows/ci.yml/badge.svg)](https://github.com/metealpkarvan/touch-bar-pet/actions/workflows/ci.yml)
 
 ![The working pet desk](docs/images/desktop-en.png)
+
+## A living playground · new in 1.1.0
+
+![Walk, fetch a ball and bone, then eat: frames rendered from the actual native strip](docs/images/touchbar-live.gif)
+
+| Tool | Interaction |
+| --- | --- |
+| **Follow** | Tap a destination to walk or run there; drag to follow your finger. Tap the pet itself to cuddle. |
+| **Ball** | Throw a ball toward your touch. Your friend chases, picks it up and carries it back to the launch point. |
+| **Bone** | Throw a bone, watch the chase and enjoy the return. Both toys are free. |
+| **Place food** | Put a bowl anywhere. The pet walks over, lowers its head and eats before food and progress are saved. |
+
+Choose a tool from the physical Touch Bar's **Follow / Ball / Bone / Place food** menu; it closes so you can tap the playground. The window strip and illustrated habitat use the same live world. After a short idle pause your friend wanders, turns, blinks and moves its paws and tail. The **Feed** care button places a bowl at another position automatically; washing and cuddling also have short interactions.
+
+At home, **1–4** select tools, **← →** move the Follow target, **Space** taps the current position and **Escape / P** cancel a free-play interaction. Tap a sleeping pet or use **Wake** to wake it. The world stops advancing while the app is in the background or minimized.
+
+Finished fetches apply the existing joy/care reward, including its 60-second XP limit. Free fetches do not replace the daily 24-second game-round goal. Canceled/replaced fetches and interrupted meals award nothing. A failed write exposes **Retry saving** for the completed interaction; retry cannot award it twice.
+
+The animation uses actual native drawing and fictional records, not a recording of physical Touch Bar hardware. Reduce Motion disables decorative movement and autonomous roaming; explicit travel, fetch and feeding still work.
 
 ## Meet your friend
 
@@ -35,7 +54,7 @@ These images are exported from the actual AppKit Touch Bar views. They are previ
 
 ## Download and keep playing
 
-1. Download `TouchBarPet-v1.0.0-universal.zip` from [Releases](https://github.com/metealpkarvan/touch-bar-pet/releases/latest).
+1. Download `TouchBarPet-v1.1.0-universal.zip` from [Releases](https://github.com/metealpkarvan/touch-bar-pet/releases/latest).
 2. Extract it and move **Pati Cepte.app** into Applications. Open it and select **Choose pet**.
 3. Keep playing. Each care action, identity change, daily gift and completed round saves automatically. Closing and reopening the app preserves your friend.
 
@@ -55,6 +74,8 @@ shasum -a 256 -c SHA256SUMS.txt
 
 ## Your progress lives on your Mac
 
+**Upgrading from 1.0.0:** close the older app and open the new `.app`. The save folder and version-1 JSON format are unchanged; identity, levels, coins, accessories and scores remain compatible. Transient walking positions, airborne toys and unfinished meals restart on reopening; completed care/fetch gains remain saved.
+
 The save is `~/Library/Application Support/TouchBarPet/pet.json`. Each save keeps the previous valid revision as `pet.previous.json`. Files are written atomically. If the primary is unreadable, the app protects it and offers explicit recovery from a valid previous revision. Recovery preserves the unreadable raw file separately.
 
 Use **Export JSON** for a portable backup; **Restore JSON** validates the whole file before replacing the local pet. Restoring requires confirmation, retains a recovery copy and does not merge pets. Backups are limited to 1 MB. Your name, species, fur, needs, resting state, XP, coins, accessories, best scores, recent journal and daily progress are included. The short, unfinished round itself is not saved.
@@ -71,7 +92,7 @@ cd touch-bar-pet
 swift run TouchBarPet
 swift run PetRulesTests
 swift run TouchBarPet --smoke-test --screenshots output/verification
-bash scripts/package.sh 1.0.0
+bash scripts/package.sh 1.1.0
 ```
 
 The core checks cover persistence/reopen, corrupt-record protection, raw recovery, backup validation, clocks, care and reward bounds, accessory unlocks and all three games. The AppKit acceptance path drives real native controls and Touch Bar item callbacks against temporary fictional records. CI runs on native Intel and arm64 Mac hosts, then verifies the Universal package.
